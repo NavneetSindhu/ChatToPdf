@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +48,7 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val currentState by chatScreenViewModel.currentState.collectAsState()
     val selectedImages by chatScreenViewModel.selectedImages.collectAsState()
+    val context = LocalContext.current
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
@@ -68,7 +70,7 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                     ActionChoices(
                         options = currentState.options,
                         onOptionSelected = { choice ->
-                            chatScreenViewModel.onOptionSelected(choice)
+                            chatScreenViewModel.onOptionSelected(context = context,option = choice)
                         }
                     )
                 }
@@ -77,7 +79,7 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                     onTextChanged = { messageText = it },
                     onSendClicked = {
                         if (messageText.isNotBlank()) {
-                            chatScreenViewModel.onOptionSelected(messageText)
+                            chatScreenViewModel.onOptionSelected(context = context,option = messageText)
                             messageText = ""
                         }
                     },
