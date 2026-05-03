@@ -14,7 +14,7 @@ fun enhanceBitmap(sourceBitmap: Bitmap):Bitmap{
     val resultBitmap = createBitmap(
         sourceBitmap.width,
         sourceBitmap.height,
-        sourceBitmap.config ?: Bitmap.Config.ARGB_8888
+        Bitmap.Config.ARGB_8888
     )
     val canvas = Canvas(resultBitmap)
     val contrast = 1.2f
@@ -40,7 +40,9 @@ fun enhanceBitmap(sourceBitmap: Bitmap):Bitmap{
 
 fun uriToBitmap(uri: Uri,contentResolver: ContentResolver):Bitmap{
     val source = ImageDecoder.createSource(contentResolver, uri)
-    val bitmap = ImageDecoder.decodeBitmap(source)
-
-    return bitmap
+    return ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+        // Force Android to load this into standard memory, not the GPU!
+        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        decoder.isMutableRequired = true
+    }
 }

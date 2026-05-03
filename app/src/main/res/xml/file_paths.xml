@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- This tells Android: "It is safe to share files from my cache folder" -->
+    <cache-path name="shared_pdfs" path="." />
+</paths>
