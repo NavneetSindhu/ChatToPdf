@@ -4,6 +4,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,12 +25,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.chattopdf.model.ChatBubble
 import com.example.chattopdf.ui.components.ActionChoices
 import com.example.chattopdf.ui.components.ImagePreviewRow
@@ -44,8 +51,9 @@ val ScreenBackground = Color(0xFFF8F5EB)
 val InputBorderColor = Color(0xFFD6D3C4)
 
 @Composable
-fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewModel= ChatScreenViewModel()) {
+fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewModel= viewModel()) {
     // Hoisted state for the text input
+    var expandedImageUri by remember { mutableStateOf<Uri?>(null) }
     var messageText by remember { mutableStateOf("") }
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val currentState by chatScreenViewModel.currentState.collectAsState()
@@ -53,13 +61,13 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
     val context = LocalContext.current
     val listState = rememberLazyListState()
 
-//    LaunchedEffect(chatList.size) {
-//                if (chatList.isNotEmpty()) {
-//                    // Animate scroll to the very last item
-//                    delay(1000)
-//                    listState.animateScrollToItem(chatList.size - 1)
-//                }
-//            }
+    LaunchedEffect(chatList.size) {
+                if (chatList.isNotEmpty()) {
+                    // Animate scroll to the very last item
+                    delay(200)
+                    listState.animateScrollToItem(chatList.size - 1)
+                }
+            }
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
@@ -134,11 +142,32 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                             BotBubble(msg) // Normal text bot message
                         }
                     } else {
-                        UserBubble(msg) // Normal user message
+                        UserBubble(msg,onImageClick = { clickedUri -> expandedImageUri = clickedUri }) // Normal user message
                     }
                 }
             }
 
+        }
+    }
+    if (expandedImageUri != null) {
+        Dialog(
+            onDismissRequest = { expandedImageUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false) // Allows full screen
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.9f))
+                    .clickable { expandedImageUri = null }, // Tap anywhere to close
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = expandedImageUri,
+                    contentDescription = "Expanded Image",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(16.dp)
+                )
+            }
         }
     }
 }

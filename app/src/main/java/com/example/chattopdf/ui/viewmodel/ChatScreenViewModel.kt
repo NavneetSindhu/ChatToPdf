@@ -19,7 +19,7 @@ class ChatScreenViewModel: ViewModel() {
     private val _currentState = MutableStateFlow<ChatScreenState>(ChatScreenState.Welcome)
     val currentState = _currentState.asStateFlow()
 
-
+    private var imagesForPdf: List<Uri> = emptyList()
     private val _currentChats = MutableStateFlow<List<ChatBubble>>(
         listOf(ChatBubble("Hi! I'm PDFDidi. Tap the paperclip to select the photos you want to turn into a PDF.", isBot = true))
     )
@@ -47,6 +47,13 @@ class ChatScreenViewModel: ViewModel() {
 
 
     fun submitUserResponse(userInput: String, context: Context) {
+
+        val currentImages = _selectedImages.value.toList()
+        if (currentImages.isNotEmpty()) {
+            imagesForPdf = currentImages
+            _selectedImages.value = emptyList() // This makes the bottom bar snap shut immediately!
+        }
+
         // 1. Format the user's message based on if they included images or not
         val finalUserText = if (_currentState.value is ChatScreenState.Welcome && _selectedImages.value.isNotEmpty()) {
             if (userInput.isBlank()) "I've attached ${_selectedImages.value.size} image(s)."
@@ -59,7 +66,11 @@ class ChatScreenViewModel: ViewModel() {
         if (finalUserText.isBlank()) return
 
         // 2. Add the user's message to the chat
-        _currentChats.value += ChatBubble(text = finalUserText, isBot = false)
+        _currentChats.value += ChatBubble(
+            text = finalUserText,
+            isBot = false,
+            userImages = currentImages // Pass the list to the bubble
+        )
 
         // 3. State Machine Logic to decide the NEXT bot message
         when (_currentState.value) {
