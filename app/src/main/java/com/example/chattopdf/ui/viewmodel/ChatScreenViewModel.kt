@@ -1,12 +1,16 @@
 package com.example.chattopdf.ui.viewmodel
 
+import android.content.Context
 import android.net.Uri
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.chattopdf.model.ChatBubble
 import com.example.chattopdf.model.ChatScreenState
+import com.example.chattopdf.utils.generatePdfFromImages
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 class ChatScreenViewModel: ViewModel() {
 
@@ -37,7 +41,7 @@ class ChatScreenViewModel: ViewModel() {
         _currentChats.value += ChatBubble(msg,false)
     }
 
-    fun onOptionSelected(option: String) {
+    fun onOptionSelected(option: String,context: Context) {
         // 1. Add the user's choice to the chat (isBot must be false here!)
         _currentChats.value = _currentChats.value + ChatBubble(text = option, isBot = false)
 
@@ -60,8 +64,9 @@ class ChatScreenViewModel: ViewModel() {
                 _currentChats.value = _currentChats.value + ChatBubble(text = "Perfect! I'm putting your PDF together now. Give me just a second...", isBot = true)
                 _currentState.value = ChatScreenState.Processing
 
-                // NOTE: Later in Phase 5, this is exactly where you will call
-                // your buildPdf() coroutine function!
+                viewModelScope.launch {
+                    generatePdfFromImages(context,selectedImages.value)
+                }
             }
 
             is ChatScreenState.Processing -> {
