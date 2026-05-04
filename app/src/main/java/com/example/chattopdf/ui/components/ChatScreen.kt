@@ -50,14 +50,15 @@ import viewPdf
 
 // Define the colors or ensure they are imported from your Theme/MainActivity
 val ProfileIconBg = Color(0xFF080A09)
-val ScreenBackground = Color(0xFFF8F5EB)
-val InputBorderColor = Color(0xFFD6D3C4)
+val ScreenBackground = Color(0xFFE7E3C3)
+val InputBorderColor = Color(0xFF343131)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     paddingValues: PaddingValues,
-    chatScreenViewModel: ChatScreenViewModel = viewModel()
+    chatScreenViewModel: ChatScreenViewModel = viewModel(),
+    onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val chatList by chatScreenViewModel.currentChats.collectAsState()
@@ -165,7 +166,7 @@ fun ChatScreen(
             topBar = {
                 ChatTopBar(onMenuClick = {
                     scope.launch { drawerState.open() }
-                })
+                },onSettingsClick = { onNavigateToSettings() })
             },
             bottomBar = {
                 ChatBottomBar(
@@ -300,7 +301,7 @@ fun ChatScreen(
 // ... Rest of your ChatTopBar and ChatBottomBar remain the same
 
 @Composable
-fun ChatTopBar(onMenuClick: () -> Unit) {
+fun ChatTopBar(onMenuClick: () -> Unit,onSettingsClick: () -> Unit) {
     Surface(shadowElevation = 2.dp) {
         Row(
             modifier = Modifier
@@ -326,7 +327,7 @@ fun ChatTopBar(onMenuClick: () -> Unit) {
                     fontWeight = FontWeight.ExtraBold
                 )
             }
-            IconButton(onClick = { /* Settings logic */ }) {
+            IconButton(onClick = onSettingsClick) {
                 Icon(
                     Icons.Default.Settings,
                     contentDescription = "Settings",

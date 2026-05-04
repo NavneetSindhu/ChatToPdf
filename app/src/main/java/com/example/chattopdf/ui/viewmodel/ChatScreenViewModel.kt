@@ -55,9 +55,14 @@ class ChatScreenViewModel(application: Application) : AndroidViewModel(applicati
 
     // Update this in your logic:
     fun loadSession(sessionId: Long) {
-        _currentSessionIdFlow.value = sessionId // Track current ID
+        _currentSessionIdFlow.value = sessionId
         currentSessionId = sessionId
-        // ... rest of loading code
+        viewModelScope.launch {
+            // This fetches from Room and updates _currentChats
+            chatRepository.getMessagesForSession(sessionId).collect { savedMessages ->
+                _currentChats.value = savedMessages.map { it.toChatBubble() }
+            }
+        }
     }
 
     fun startNewChat() {

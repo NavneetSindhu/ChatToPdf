@@ -8,7 +8,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.chattopdf.navigation.Screen
 import com.example.chattopdf.ui.components.ChatScreen
+import com.example.chattopdf.ui.screen.SettingsScreen
 import com.example.chattopdf.ui.theme.ChatToPdfTheme
 
 class MainActivity : ComponentActivity() {
@@ -21,7 +26,19 @@ class MainActivity : ComponentActivity() {
         setContent {
             ChatToPdfTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    ChatScreen(paddingValues = innerPadding)
+                    val navController = rememberNavController()
+
+                    NavHost(navController = navController, startDestination = Screen.Chat) {
+                        composable(Screen.Chat) {
+                            ChatScreen(
+                                paddingValues = innerPadding,
+                                onNavigateToSettings = { navController.navigate(Screen.Settings) }
+                            )
+                        }
+                        composable(Screen.Settings) {
+                            SettingsScreen(onBackClick = { navController.popBackStack() })
+                        }
+                    }
                 }
             }
         }
