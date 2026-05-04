@@ -9,17 +9,19 @@ import com.example.chattopdf.model.ChatBubble
 import com.example.chattopdf.model.ChatScreenState
 import com.example.chattopdf.utils.generatePdfFromImages
 import com.example.chattopdf.utils.uriToBitmap
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import sharePdf
 
-class ChatScreenViewModel: ViewModel() {
+class ChatScreenViewModel : ViewModel() {
 
     private val _currentState = MutableStateFlow<ChatScreenState>(ChatScreenState.Welcome)
     val currentState = _currentState.asStateFlow()
 
     private var imagesForPdf: List<Uri> = emptyList()
+
     private val _currentChats = MutableStateFlow<List<ChatBubble>>(
         listOf(ChatBubble("Hi! I'm PDFDidi. Tap the paperclip to select the photos you want to turn into a PDF.", isBot = true))
     )
@@ -28,84 +30,97 @@ class ChatScreenViewModel: ViewModel() {
     private val _selectedImages = MutableStateFlow<List<Uri>>(emptyList())
     val selectedImages = _selectedImages.asStateFlow()
 
-
-    fun onImageSelected(uris:List<Uri>){
-        if(uris.isNotEmpty()){
-            _selectedImages.value += uris
-        }
-
+    fun onImageSelected(uris: List<Uri>) {
+        if (uris.isNotEmpty()) _selectedImages.value += uris
     }
 
-    fun clearSelectedImages(){
-        _selectedImages.value = emptyList()
-    }
-
-    fun onDeleteImageSelected(uri:Uri){
+    fun onDeleteImageSelected(uri: Uri) {
         _selectedImages.value -= uri
     }
 
-
-
     fun submitUserResponse(userInput: String, context: Context) {
-
+        val inputLower = userInput.lowercase()
         val currentImages = _selectedImages.value.toList()
+
+        // 1. Snapshot and clear UI instantly
         if (currentImages.isNotEmpty()) {
             imagesForPdf = currentImages
-            _selectedImages.value = emptyList() // This makes the bottom bar snap shut immediately!
+            _selectedImages.value = emptyList()
         }
 
-        // 1. Format the user's message based on if they included images or not
-        val finalUserText = if (_currentState.value is ChatScreenState.Welcome && _selectedImages.value.isNotEmpty()) {
-            if (userInput.isBlank()) "I've attached ${_selectedImages.value.size} image(s)."
-            else "Attached ${_selectedImages.value.size} image(s): $userInput"
+        // 2. Format text based on content
+        val finalUserText = if (currentImages.isNotEmpty() && userInput.isBlank()) {
+            "I've attached ${currentImages.size} image(s)."
         } else {
-            userInput // Just print exactly what the user typed/tapped
+            userInput
         }
 
-        // Prevent sending absolute blank messages
-        if (finalUserText.isBlank()) return
+        if (finalUserText.isBlank() && currentImages.isEmpty()) return
 
-        // 2. Add the user's message to the chat
+        // 3. Add User Bubble immediately
         _currentChats.value += ChatBubble(
             text = finalUserText,
             isBot = false,
-            userImages = currentImages // Pass the list to the bubble
+            userImages = currentImages
         )
 
-        // 3. State Machine Logic to decide the NEXT bot message
-        when (_currentState.value) {
-            is ChatScreenState.Welcome -> {
-                _currentChats.value += ChatBubble(text = "Got it. What kind of document is this?", isBot = true)
-                _currentState.value = ChatScreenState.AskDocType
-            }
+        // 4. Intelligence Logic: Detect Keywords
+        val mentionsA4 = inputLower.contains("a4") || inputLower.contains("standard")
+        val mentionsOriginal = inputLower.contains("original") || inputLower.contains("actual")
+        val mentionsDocType = inputLower.contains("receipt") || inputLower.contains("id") || inputLower.contains("document")
 
-            is ChatScreenState.AskDocType -> {
-                _currentChats.value += ChatBubble(text = "Okay, standard A4 size or keep the original?", isBot = true)
-                _currentState.value = ChatScreenState.AskPageOrientation
-            }
+        viewModelScope.launch {
+            when {
+                // SKIP TO END: User gave all info or we're at the last step
+                (_currentState.value is ChatScreenState.AskPageOrientation) || (imagesForPdf.isNotEmpty() && (mentionsA4 || mentionsOriginal)) -> {
+                    val sizePref = if (mentionsA4) "A4" else "Original"
+                    botResponse("Understood. Using $sizePref size. Putting your PDF together now...")
+                    generateAndSharePdf(context, userInput)
+                }
 
-            is ChatScreenState.AskPageOrientation -> {
-                _currentChats.value += ChatBubble(text = "Perfect! I'm putting your PDF together now. Give me just a second...", isBot = true)
-                _currentState.value = ChatScreenState.Processing
+                // SKIP TO SIZE: User mentioned doc type but not size
+                (_currentState.value is ChatScreenState.AskDocType) || (imagesForPdf.isNotEmpty() && mentionsDocType) -> {
+                    botResponse("Got it! Should I use standard A4 size or keep the original dimensions?", ChatScreenState.AskPageOrientation)
+                }
 
-                viewModelScope.launch {
-                    val generatedFile = generatePdfFromImages(context, _selectedImages.value)
-
-                    if (generatedFile != null) {
-                        _currentChats.value += ChatBubble("Done! Here is your PDF.", isBot = true, attachment = generatedFile)
-                        // Trigger share sheet!
-                        sharePdf(context, generatedFile)
-
-                        // Optional: Reset the state back to Welcome so they can make another PDF!
-                        _currentState.value = ChatScreenState.Welcome
-                        _selectedImages.value = emptyList() // NOW it is safe to clear the images!
+                // DEFAULT WELCOME
+                _currentState.value is ChatScreenState.Welcome -> {
+                    if (imagesForPdf.isEmpty()) {
+                        botResponse("Please attach some images first so I can help you!")
                     } else {
-                        _currentChats.value += ChatBubble("Oops, something went wrong building the PDF.", isBot = true)
+                        botResponse("I see those! What kind of document is this? (Receipt, ID, etc.)", ChatScreenState.AskDocType)
                     }
                 }
             }
+        }
+    }
 
-            is ChatScreenState.Processing -> { /* Do nothing */ }
+    private suspend fun botResponse(text: String, nextState: ChatScreenState = ChatScreenState.Welcome) {
+        delay(600) // Natural "thinking" pause
+        _currentChats.value += ChatBubble(text = text, isBot = true)
+        _currentState.value = nextState
+    }
+
+    private fun generateAndSharePdf(context: Context, userInput: String) {
+        _currentState.value = ChatScreenState.Processing
+
+        viewModelScope.launch {
+            // Impactful: Use user text as the filename if it's short!
+            val fileName = if (userInput.isNotBlank() && userInput.length < 15) userInput else "PDFDidi_Export"
+
+            val generatedFile = generatePdfFromImages(context, imagesForPdf) // You can update your util to accept fileName later
+
+            if (generatedFile != null) {
+                botResponse("Done! Here is your PDF.", ChatScreenState.Welcome)
+                // Add attachment to the last bot message
+                val lastMsg = _currentChats.value.last()
+                _currentChats.value = _currentChats.value.dropLast(1) + lastMsg.copy(attachment = generatedFile)
+
+                sharePdf(context, generatedFile)
+                imagesForPdf = emptyList()
+            } else {
+                botResponse("Oops, something went wrong building the PDF.")
+            }
         }
     }
 }
