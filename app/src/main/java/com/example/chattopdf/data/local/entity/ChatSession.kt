@@ -5,7 +5,7 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "chat_sessions")
 data class ChatSession(
-    @PrimaryKey(autoGenerate = true) val id:Long=0,
+    @PrimaryKey(autoGenerate = true) val sessionId:Long=0,
     val title:String,
     val generatedPdfPath:String?=null,
     val createdAt:Long = System.currentTimeMillis()
