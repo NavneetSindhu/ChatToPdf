@@ -4,10 +4,12 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -23,32 +25,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.chattopdf.model.ChatBubble
 import com.example.chattopdf.ui.components.ActionChoices
 import com.example.chattopdf.ui.components.ImagePreviewRow
 import com.example.chattopdf.ui.components.UserBubble
 import com.example.chattopdf.ui.viewmodel.ChatScreenViewModel
+import kotlinx.coroutines.delay
 
 // Define the colors extracted from your design
-val PrimaryDarkGreen = Color(0xFF144D3A)
-val ProfileIconBg = Color(0xFF90C2B2)
+val PrimaryDarkGreen = Color(0xFF156A4C)
+val ProfileIconBg = Color(0xFF080A09)
 val ScreenBackground = Color(0xFFF8F5EB)
 val InputBorderColor = Color(0xFFD6D3C4)
 
 @Composable
-fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewModel= ChatScreenViewModel()) {
+fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewModel= viewModel()) {
     // Hoisted state for the text input
+    var expandedImageUri by remember { mutableStateOf<Uri?>(null) }
     var messageText by remember { mutableStateOf("") }
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val currentState by chatScreenViewModel.currentState.collectAsState()
     val selectedImages by chatScreenViewModel.selectedImages.collectAsState()
     val context = LocalContext.current
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(chatList.size) {
+                if (chatList.isNotEmpty()) {
+                    // Animate scroll to the very last item
+                    delay(200)
+                    listState.animateScrollToItem(chatList.size - 1)
+                }
+            }
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
@@ -70,7 +89,7 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                     ActionChoices(
                         options = currentState.options,
                         onOptionSelected = { choice ->
-                            chatScreenViewModel.onOptionSelected(context = context,option = choice)
+                            chatScreenViewModel.submitUserResponse(context = context, userInput = choice)
                         }
                     )
                 }
@@ -78,10 +97,8 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                     text = messageText,
                     onTextChanged = { messageText = it },
                     onSendClicked = {
-                        if (messageText.isNotBlank()) {
-                            chatScreenViewModel.onOptionSelected(context = context,option = messageText)
-                            messageText = ""
-                        }
+                        chatScreenViewModel.submitUserResponse(userInput = messageText, context = context)
+                        messageText = ""
                     },
                     onAttachmentClicked = {
                         photoPickerLauncher.launch(
@@ -104,19 +121,53 @@ fun ChatScreen(paddingValues: PaddingValues,chatScreenViewModel: ChatScreenViewM
                 .padding(innerPadding)
         ) {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
+                    .imePadding(),
+                state = listState,
                 reverseLayout = false,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                items(chatList){ msg ->
-                    if(msg.isBot){
-                        BotBubble(msg)
-                    }else UserBubble(msg)
-
+                items(chatList) { msg ->
+                    if (msg.isBot) {
+                        // If there's an attachment, show the PDF Bubble!
+                        if (msg.attachment != null) {
+                            PdfBubble(
+                                chatBubble = msg,
+                                onClick = { file ->
+                                    viewPdf(context,file)
+                                }
+                            )
+                        } else {
+                            BotBubble(msg) // Normal text bot message
+                        }
+                    } else {
+                        UserBubble(msg,onImageClick = { clickedUri -> expandedImageUri = clickedUri }) // Normal user message
+                    }
                 }
             }
 
+        }
+    }
+    if (expandedImageUri != null) {
+        Dialog(
+            onDismissRequest = { expandedImageUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false) // Allows full screen
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.9f))
+                    .clickable { expandedImageUri = null }, // Tap anywhere to close
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = expandedImageUri,
+                    contentDescription = "Expanded Image",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize().padding(16.dp)
+                )
+            }
         }
     }
 }

@@ -63,7 +63,7 @@ suspend fun generatePdfFromImages(context: Context, uris: List<Uri>): File? {
         }
 
         // 6. Save the document to a temporary file
-        val outputFile = File(context.cacheDir, "PDFDidi_Document_${System.currentTimeMillis()}.pdf")
+        val outputFile = File(context.cacheDir, "ChatToPdf_Document_${System.currentTimeMillis()}.pdf")
 
         try {
             pdfDocument.writeTo(FileOutputStream(outputFile))
