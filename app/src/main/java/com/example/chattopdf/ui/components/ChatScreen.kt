@@ -1,5 +1,6 @@
 package com.example.chattopdf.ui.components
 
+
 import BotBubble
 import PdfBubble
 import android.net.Uri
@@ -19,7 +20,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,10 +48,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import viewPdf
 
+// Define the colors or ensure they are imported from your Theme/MainActivity
 val ProfileIconBg = Color(0xFF080A09)
 val ScreenBackground = Color(0xFFF8F5EB)
 val InputBorderColor = Color(0xFFD6D3C4)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     paddingValues: PaddingValues,
@@ -56,17 +62,27 @@ fun ChatScreen(
     val context = LocalContext.current
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val selectedImages by chatScreenViewModel.selectedImages.collectAsState()
-    val listState = rememberLazyListState()
+    val historySessions by chatScreenViewModel.historySessions.collectAsState()
 
+    // We need to track the current ID in the UI to highlight the active session in the drawer
+    // You can also add a StateFlow in the ViewModel for this for better architecture
+    val currentSessionId by chatScreenViewModel.currentSessionIdFlow.collectAsState()
+
+    val listState = rememberLazyListState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // Bottom sheet variables
+    val sheetState = rememberModalBottomSheetState()
+    var showSettingsSheet by remember { mutableStateOf(false) }
+
 
     var expandedImageUri by remember { mutableStateOf<Uri?>(null) }
     var messageText by remember { mutableStateOf("") }
 
     LaunchedEffect(chatList.size) {
         if (chatList.isNotEmpty()) {
-            delay(200)
+            delay(100)
             listState.animateScrollToItem(chatList.size - 1)
         }
     }
@@ -80,13 +96,10 @@ fun ChatScreen(
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            // FIX: ModalDrawerSheet is itself @Composable, so all children are valid here
             ModalDrawerSheet(
                 drawerContainerColor = ScreenBackground,
-                modifier = Modifier.width(300.dp)
+                modifier = Modifier.fillMaxWidth(.9f)
             ) {
-                // FIX: Spacer, Text, HorizontalDivider are now directly inside
-                // the ModalDrawerSheet content lambda — a valid @Composable scope
                 Spacer(Modifier.height(12.dp))
 
                 Text(
@@ -104,33 +117,43 @@ fun ChatScreen(
                     color = InputBorderColor
                 )
 
-                // FIX: LazyColumn is now directly inside ModalDrawerSheet,
-                // not nested inside another LazyColumn item { } block
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item {
                         NavigationDrawerItem(
                             label = { Text("New Chat", color = PrimaryDarkGreen) },
                             selected = false,
-                            icon = {
-                                Icon(
-                                    Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = PrimaryDarkGreen
-                                )
-                            },
                             onClick = {
+                                chatScreenViewModel.startNewChat()
                                 scope.launch { drawerState.close() }
                             },
+                            icon = { Icon(Icons.Default.Add, contentDescription = null, tint = PrimaryDarkGreen) },
                             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
                     }
 
-                    item {
-                        Text(
-                            "Past PDFs will appear here...",
-                            modifier = Modifier.padding(16.dp),
-                            color = Color.Gray,
-                            fontSize = 14.sp
+                    items(historySessions) { session ->
+                        NavigationDrawerItem(
+                            label = { Text(session.title) },
+                            // Correctly highlighting the active project
+                            selected = session.sessionId == currentSessionId,
+                            onClick = {
+                                chatScreenViewModel.loadSession(session.sessionId)
+                                scope.launch { drawerState.close() }
+                            },
+                            badge = {
+                                IconButton(onClick = {
+                                    // Logic to select this specific session for the bottom sheet
+                                    // and then show the sheet
+                                    showSettingsSheet = true
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Options",
+                                        tint = PrimaryDarkGreen
+                                    )
+                                }
+                            },
+                            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                         )
                     }
                 }
@@ -236,7 +259,45 @@ fun ChatScreen(
             }
         }
     }
+    // ... inside ChatScreen at the very bottom ...
+
+    GenericBottomSheet(
+        showSheet = showSettingsSheet,
+        sheetState = sheetState,
+        onDismiss = { showSettingsSheet = false }
+    ) {
+        // Content of the Bottom Sheet
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .padding(bottom = 24.dp) // Space for system nav bar
+        ) {
+            Text(
+                text = "Project Options",
+                style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            ListItem(
+                headlineContent = { Text("Rename Project") },
+                leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
+                modifier = Modifier.clickable { /* Rename Logic */ }
+            )
+
+            ListItem(
+                headlineContent = { Text("Delete Project", color = Color.Red) },
+                leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
+                modifier = Modifier.clickable {
+                    // chatScreenViewModel.deleteSession(currentSessionId)
+                    showSettingsSheet = false
+                }
+            )
+        }
+    }
 }
+
+// ... Rest of your ChatTopBar and ChatBottomBar remain the same
 
 @Composable
 fun ChatTopBar(onMenuClick: () -> Unit) {

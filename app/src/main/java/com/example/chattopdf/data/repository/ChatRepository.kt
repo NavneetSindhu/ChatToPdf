@@ -19,6 +19,10 @@ class ChatRepository(
         return chatDao.insertSession(ChatSession(title = title))
     }
 
+    fun getMessagesForSession(sessionId: Long): Flow<List<ChatMessage>> {
+        return chatDao.getMessagesForSession(sessionId)
+    }
+
     // 3. The "Smart" Save: Copies images and saves the message
     suspend fun saveUserMessage(sessionId: Long, text: String, uris: List<Uri>) {
         // Physicalize the images first
