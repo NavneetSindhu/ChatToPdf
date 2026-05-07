@@ -1,6 +1,5 @@
 package com.example.chattopdf.ui.components
 
-
 import BotBubble
 import PdfBubble
 import android.annotation.SuppressLint
@@ -8,7 +7,6 @@ import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,6 +45,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.chattopdf.ui.viewmodel.ChatScreenViewModel
+import com.example.chattopdf.utils.ThemeManager
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
@@ -55,10 +54,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import viewPdf
 
-// Define the colors or ensure they are imported from your Theme/MainActivity
-val ProfileIconBg = Color(0xFF080A09)
-val ScreenBackground = Color(0xFFE9E9DD)
-val InputBorderColor = Color(0xFF000000)
+// Defined here so all components can access the primary accent color
+//val PrimaryDarkGreen = Color(0xFF156A4C)
 
 @SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -68,14 +65,11 @@ fun ChatScreen(
     chatScreenViewModel: ChatScreenViewModel = viewModel(),
     onNavigateToSettings: () -> Unit
 ) {
-//    val context = LocalContext.current
     val context = LocalContext.current as Activity
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val selectedImages by chatScreenViewModel.selectedImages.collectAsState()
     val historySessions by chatScreenViewModel.historySessions.collectAsState()
 
-    // We need to track the current ID in the UI to highlight the active session in the drawer
-    // You can also add a StateFlow in the ViewModel for this for better architecture
     val currentSessionId by chatScreenViewModel.currentSessionIdFlow.collectAsState()
 
     val listState = rememberLazyListState()
@@ -86,9 +80,17 @@ fun ChatScreen(
     val sheetState = rememberModalBottomSheetState()
     var showSettingsSheet by remember { mutableStateOf(false) }
 
+    // NEW: Track WHICH project the user clicked the 3-dots on
+    var sessionForOptions by remember { mutableStateOf<Long?>(null) }
 
     var expandedImageUri by remember { mutableStateOf<Uri?>(null) }
     var messageText by remember { mutableStateOf("") }
+
+    // DataStore Theme
+    val themeManager = remember { ThemeManager(context) }
+    val screenBackground by themeManager.screenBgFlow.collectAsState(initial = ThemeManager.DefaultScreenBg)
+    val profileIconBg by themeManager.profileBgFlow.collectAsState(initial = ThemeManager.DefaultProfileBg)
+    val inputBorderColor by themeManager.borderColorFlow.collectAsState(initial = ThemeManager.DefaultBorder)
 
     LaunchedEffect(chatList.size) {
         if (chatList.isNotEmpty()) {
@@ -99,47 +101,33 @@ fun ChatScreen(
 
     val scannerOptions = remember {
         GmsDocumentScannerOptions.Builder()
-            .setGalleryImportAllowed(true) // Allows users to pick from gallery too
-            .setPageLimit(30) // Max pages per PDF
-            .setResultFormats(RESULT_FORMAT_JPEG) // We want the clean images
-            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL) // Gives the best ML cleaning features
+            .setGalleryImportAllowed(true)
+            .setPageLimit(100)
+            .setResultFormats(RESULT_FORMAT_JPEG)
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL)
             .build()
     }
 
-    // 2. Initialize the Scanner Client
-    val scannerClient = remember {
-        GmsDocumentScanning.getClient(scannerOptions)
-    }
+    val scannerClient = remember { GmsDocumentScanning.getClient(scannerOptions) }
 
-    // 3. Create the Launcher to handle the result
     val scannerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-
-            // Extract the clean, cropped Image URIs
             val scannedUris = scanResult?.pages?.map { it.imageUri } ?: emptyList()
-
             if (scannedUris.isNotEmpty()) {
-                // Pass them to your ViewModel just like you did with the photo picker!
                 chatScreenViewModel.onImageSelected(scannedUris)
             }
         }
-    }
-
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia()
-    ) { uris ->
-        chatScreenViewModel.onImageSelected(uris)
     }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = ScreenBackground,
-                modifier = Modifier.fillMaxWidth(.9f)
+                drawerContainerColor = screenBackground,
+                modifier = Modifier.fillMaxWidth(.85f) // Slightly narrower looks better
             ) {
                 Spacer(Modifier.height(12.dp))
 
@@ -155,7 +143,7 @@ fun ChatScreen(
 
                 HorizontalDivider(
                     modifier = Modifier.padding(vertical = 8.dp),
-                    color = InputBorderColor
+                    color = inputBorderColor
                 )
 
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -175,7 +163,6 @@ fun ChatScreen(
                     items(historySessions) { session ->
                         NavigationDrawerItem(
                             label = { Text(session.title) },
-                            // Correctly highlighting the active project
                             selected = session.sessionId == currentSessionId,
                             onClick = {
                                 chatScreenViewModel.loadSession(session.sessionId)
@@ -183,8 +170,8 @@ fun ChatScreen(
                             },
                             badge = {
                                 IconButton(onClick = {
-                                    // Logic to select this specific session for the bottom sheet
-                                    // and then show the sheet
+                                    // Save the ID before opening the sheet!
+                                    sessionForOptions = session.sessionId
                                     showSettingsSheet = true
                                 }) {
                                     Icon(
@@ -204,14 +191,18 @@ fun ChatScreen(
         Scaffold(
             modifier = Modifier.padding(paddingValues),
             topBar = {
-                ChatTopBar(onMenuClick = {
-                    scope.launch { drawerState.open() }
-                },onSettingsClick = { onNavigateToSettings() })
+                ChatTopBar(
+                    onMenuClick = { scope.launch { drawerState.open() } },
+                    onSettingsClick = { onNavigateToSettings() }
+                )
             },
             bottomBar = {
+                // Passed the dynamic colors here!
                 ChatBottomBar(
                     text = messageText,
                     onTextChanged = { messageText = it },
+                    screenBackground = screenBackground,
+                    inputBorderColor = inputBorderColor,
                     onSendClicked = {
                         if (messageText.isNotBlank() || selectedImages.isNotEmpty()) {
                             chatScreenViewModel.submitUserResponse(
@@ -222,17 +213,9 @@ fun ChatScreen(
                         }
                     },
                     onAttachmentClicked = {
-//                        photoPickerLauncher.launch(
-//                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-//                        )
                         scannerClient.getStartScanIntent(context)
                             .addOnSuccessListener { intentSender ->
-                                scannerLauncher.launch(
-                                    IntentSenderRequest.Builder(intentSender).build()
-                                )
-                            }
-                            .addOnFailureListener {
-                                // Handle error (e.g., show a Toast)
+                                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
                             }
                     },
                     selectedImages = selectedImages,
@@ -241,7 +224,7 @@ fun ChatScreen(
                     }
                 )
             },
-            containerColor = ScreenBackground
+            containerColor = screenBackground
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -286,6 +269,7 @@ fun ChatScreen(
         }
     }
 
+    // Image Preview Dialog
     if (expandedImageUri != null) {
         Dialog(
             onDismissRequest = { expandedImageUri = null },
@@ -302,26 +286,23 @@ fun ChatScreen(
                     model = expandedImageUri,
                     contentDescription = "Full View",
                     contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
+                    modifier = Modifier.fillMaxSize().padding(16.dp)
                 )
             }
         }
     }
-    // ... inside ChatScreen at the very bottom ...
 
+    // Bottom Sheet for Project Options
     GenericBottomSheet(
         showSheet = showSettingsSheet,
         sheetState = sheetState,
         onDismiss = { showSettingsSheet = false }
     ) {
-        // Content of the Bottom Sheet
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .padding(bottom = 24.dp) // Space for system nav bar
+                .padding(bottom = 24.dp)
         ) {
             Text(
                 text = "Project Options",
@@ -332,14 +313,20 @@ fun ChatScreen(
             ListItem(
                 headlineContent = { Text("Rename Project") },
                 leadingContent = { Icon(Icons.Default.Edit, contentDescription = null) },
-                modifier = Modifier.clickable { /* Rename Logic */ }
+                modifier = Modifier.clickable {
+                    // Future Rename Logic using sessionForOptions
+                    showSettingsSheet = false
+                }
             )
 
             ListItem(
                 headlineContent = { Text("Delete Project", color = Color.Red) },
                 leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
                 modifier = Modifier.clickable {
-                    // chatScreenViewModel.deleteSession(currentSessionId)
+                    // We now know WHICH session to delete!
+                    sessionForOptions?.let { id ->
+                        // chatScreenViewModel.deleteSession(id)
+                    }
                     showSettingsSheet = false
                 }
             )
@@ -347,10 +334,8 @@ fun ChatScreen(
     }
 }
 
-// ... Rest of your ChatTopBar and ChatBottomBar remain the same
-
 @Composable
-fun ChatTopBar(onMenuClick: () -> Unit,onSettingsClick: () -> Unit) {
+fun ChatTopBar(onMenuClick: () -> Unit, onSettingsClick: () -> Unit) {
     Surface(shadowElevation = 2.dp) {
         Row(
             modifier = Modifier
@@ -362,11 +347,7 @@ fun ChatTopBar(onMenuClick: () -> Unit,onSettingsClick: () -> Unit) {
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onMenuClick) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Menu",
-                        tint = PrimaryDarkGreen
-                    )
+                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = PrimaryDarkGreen)
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
@@ -377,11 +358,7 @@ fun ChatTopBar(onMenuClick: () -> Unit,onSettingsClick: () -> Unit) {
                 )
             }
             IconButton(onClick = onSettingsClick) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = PrimaryDarkGreen
-                )
+                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = PrimaryDarkGreen)
             }
         }
     }
@@ -391,13 +368,15 @@ fun ChatTopBar(onMenuClick: () -> Unit,onSettingsClick: () -> Unit) {
 fun ChatBottomBar(
     text: String,
     onTextChanged: (String) -> Unit,
+    screenBackground: Color,   // Added Dynamic Color Parameter
+    inputBorderColor: Color,   // Added Dynamic Color Parameter
     onSendClicked: () -> Unit,
     onAttachmentClicked: () -> Unit,
     selectedImages: List<Uri>,
     onRemoveImage: (Uri) -> Unit
 ) {
     Surface(
-        color = ScreenBackground,
+        color = screenBackground,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.navigationBarsPadding()) {
@@ -410,7 +389,7 @@ fun ChatBottomBar(
                     .padding(start = 16.dp, end = 16.dp, bottom = 12.dp, top = 4.dp)
                     .fillMaxWidth()
                     .background(Color.White, shape = RoundedCornerShape(28.dp))
-                    .border(1.dp, InputBorderColor, RoundedCornerShape(28.dp))
+                    .border(1.dp, inputBorderColor, RoundedCornerShape(28.dp))
                     .padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -439,11 +418,8 @@ fun ChatBottomBar(
                 )
 
                 Surface(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape),
-                    color = if (text.isNotBlank() || selectedImages.isNotEmpty())
-                        PrimaryDarkGreen else Color.LightGray
+                    modifier = Modifier.size(42.dp).clip(CircleShape),
+                    color = if (text.isNotBlank() || selectedImages.isNotEmpty()) PrimaryDarkGreen else Color.LightGray
                 ) {
                     IconButton(
                         onClick = onSendClicked,

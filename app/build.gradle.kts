@@ -55,6 +55,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.0")
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
     val room_version = "2.6.1"
 
     implementation("androidx.room:room-runtime:$room_version")

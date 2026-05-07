@@ -19,8 +19,7 @@ fun GenericBottomSheet(
         ModalBottomSheet(
             onDismissRequest = onDismiss,
             sheetState = sheetState,
-            containerColor = ScreenBackground,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = InputBorderColor) },
+            dragHandle = { BottomSheetDefaults.DragHandle() },
         ) {
             content()
         }
