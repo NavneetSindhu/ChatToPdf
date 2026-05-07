@@ -100,7 +100,7 @@ fun ChatScreen(
     val scannerOptions = remember {
         GmsDocumentScannerOptions.Builder()
             .setGalleryImportAllowed(true) // Allows users to pick from gallery too
-            .setPageLimit(30) // Max pages per PDF
+            .setPageLimit(100) // Max pages per PDF
             .setResultFormats(RESULT_FORMAT_JPEG) // We want the clean images
             .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL) // Gives the best ML cleaning features
             .build()
