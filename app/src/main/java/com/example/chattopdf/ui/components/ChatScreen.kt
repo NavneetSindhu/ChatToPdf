@@ -3,8 +3,11 @@ package com.example.chattopdf.ui.components
 
 import BotBubble
 import PdfBubble
+import android.annotation.SuppressLint
+import android.app.Activity
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -44,15 +47,20 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.chattopdf.ui.viewmodel.ChatScreenViewModel
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import viewPdf
 
 // Define the colors or ensure they are imported from your Theme/MainActivity
 val ProfileIconBg = Color(0xFF080A09)
-val ScreenBackground = Color(0xFFE7E3C3)
-val InputBorderColor = Color(0xFF343131)
+val ScreenBackground = Color(0xFFE9E9DD)
+val InputBorderColor = Color(0xFF000000)
 
+@SuppressLint("ContextCastToActivity")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
@@ -60,7 +68,8 @@ fun ChatScreen(
     chatScreenViewModel: ChatScreenViewModel = viewModel(),
     onNavigateToSettings: () -> Unit
 ) {
-    val context = LocalContext.current
+//    val context = LocalContext.current
+    val context = LocalContext.current as Activity
     val chatList by chatScreenViewModel.currentChats.collectAsState()
     val selectedImages by chatScreenViewModel.selectedImages.collectAsState()
     val historySessions by chatScreenViewModel.historySessions.collectAsState()
@@ -85,6 +94,37 @@ fun ChatScreen(
         if (chatList.isNotEmpty()) {
             delay(100)
             listState.animateScrollToItem(chatList.size - 1)
+        }
+    }
+
+    val scannerOptions = remember {
+        GmsDocumentScannerOptions.Builder()
+            .setGalleryImportAllowed(true) // Allows users to pick from gallery too
+            .setPageLimit(30) // Max pages per PDF
+            .setResultFormats(RESULT_FORMAT_JPEG) // We want the clean images
+            .setScannerMode(GmsDocumentScannerOptions.SCANNER_MODE_FULL) // Gives the best ML cleaning features
+            .build()
+    }
+
+    // 2. Initialize the Scanner Client
+    val scannerClient = remember {
+        GmsDocumentScanning.getClient(scannerOptions)
+    }
+
+    // 3. Create the Launcher to handle the result
+    val scannerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val scanResult = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+
+            // Extract the clean, cropped Image URIs
+            val scannedUris = scanResult?.pages?.map { it.imageUri } ?: emptyList()
+
+            if (scannedUris.isNotEmpty()) {
+                // Pass them to your ViewModel just like you did with the photo picker!
+                chatScreenViewModel.onImageSelected(scannedUris)
+            }
         }
     }
 
@@ -182,9 +222,18 @@ fun ChatScreen(
                         }
                     },
                     onAttachmentClicked = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+//                        photoPickerLauncher.launch(
+//                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+//                        )
+                        scannerClient.getStartScanIntent(context)
+                            .addOnSuccessListener { intentSender ->
+                                scannerLauncher.launch(
+                                    IntentSenderRequest.Builder(intentSender).build()
+                                )
+                            }
+                            .addOnFailureListener {
+                                // Handle error (e.g., show a Toast)
+                            }
                     },
                     selectedImages = selectedImages,
                     onRemoveImage = { uriToRemove ->
